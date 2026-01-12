@@ -1,0 +1,18 @@
+[package]
+name = "stardust_camera_client"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+stardust-xr-fusion = { git = "http://github.com/StardustXR/core.git", version = "0.50.0" }
+stardust-xr-cme = { path = "../stardust-xr-cme", version = "0.50.0" }
+tokio = { version = "1.49.0", features = ["macros", "rt", "rt-multi-thread", "tracing"] }
+vulkano = { git = "https://github.com/Schmarni-Dev/vulkano", branch = "0_35_dmabuf_fixes", default-features = false }
+winit = { version = "0.30.12", default-features = false, features = ["wayland", "mint", "rwh_06"] }
+tracing = "0.1.44"
+tracing-subscriber = "0.3.22"
+glam = { version = "0.30.10", features = ["mint"] }
+
+
+[patch.'http://github.com/StardustXR/core.git']
+stardust-xr-fusion = { git = "http://github.com/Schmarni-Dev/core.git", branch = "camera" }
