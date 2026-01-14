@@ -1,23 +1,26 @@
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
-    thread::sleep,
-    time::Duration,
 };
 
-use glam::{Mat4, Quat};
+use glam::{Mat4, Quat, vec3};
 use stardust_xr_cme::{
     dmatex::Dmatex, format::DmatexFormat, render_device::RenderDevice, swapchain::Swapchain,
 };
 use stardust_xr_fusion::{
-    AsyncEventHandle, Client, ClientHandle, camera::{Camera, CameraAspect, View}, drawable::{DmatexSize, DmatexSubmitInfo, MaterialParameter, Model, ModelPartAspect}, project_local_resources, root::{RootAspect, RootEvent}, spatial::Transform, values::ResourceID
+    AsyncEventHandle, Client, ClientHandle,
+    camera::{Camera, CameraAspect, View},
+    drawable::{DmatexSize, DmatexSubmitInfo, MaterialParameter, Model, ModelPartAspect},
+    project_local_resources,
+    root::{RootAspect, RootEvent},
+    spatial::Transform,
+    values::ResourceID,
 };
 use tracing::info;
 use vulkano::{
     VulkanLibrary,
     command_buffer::{
-        self, AutoCommandBufferBuilder, CommandBufferSubmitInfo, CopyImageInfo,
-        SemaphoreSubmitInfo, SubmitInfo, allocator::StandardCommandBufferAllocator,
+        self, AutoCommandBufferBuilder, BlitImageInfo, CommandBufferSubmitInfo, SemaphoreSubmitInfo, SubmitInfo, allocator::StandardCommandBufferAllocator,
     },
     device::{Device, DeviceCreateInfo, DeviceExtensions, Queue, QueueCreateInfo, QueueFlags},
     format::Format,
@@ -25,12 +28,11 @@ use vulkano::{
     instance::{Instance, InstanceCreateInfo},
     swapchain::{
         CompositeAlpha, PresentInfo, PresentMode, SemaphorePresentInfo, Surface,
-        SwapchainCreateInfo, SwapchainPresentInfo, acquire_next_image,
+        SwapchainCreateInfo, SwapchainPresentInfo,
     },
-    sync::{
-        fence::Fence,
-        semaphore::{Semaphore, SemaphoreType},
-    },
+    sync::
+        semaphore::Semaphore
+    ,
 };
 use winit::{application::ApplicationHandler, event_loop::EventLoop, window::Window};
 
@@ -126,18 +128,21 @@ async fn stardust_loop(
     let camera = Camera::create(
         client.get_root(),
         Transform::from_translation_rotation(
-            [0.0, 1.0, -1.0],
-            Quat::from_rotation_x(45f32.to_radians()),
+            [0.0, 0.2, 0.2],
+            Quat::from_rotation_y(-90f32.to_radians()),
         ),
     )
     .unwrap();
     let model = Model::create(
-        client.get_root(),
-        Transform::from_scale([0.1; 3]),
+        &camera,
+        Transform::from_scale([0.2; 3]),
         &ResourceID::new_namespaced("vk", "panel"),
     )
     .unwrap();
     let panel = model.part("Panel").unwrap();
+    panel
+        .set_material_parameter("unlit", MaterialParameter::Bool(true))
+        .unwrap();
 
     loop {
         event.wait().await;
@@ -176,12 +181,10 @@ async fn stardust_loop(
         let way_image = output.swap_images[way_info.image_index as usize].clone();
 
         builder
-            .copy_image(CopyImageInfo::images(cme_info.image(), way_image))
+            .blit_image(BlitImageInfo::images(cme_info.image(), way_image))
             .unwrap();
         let cmd_buff = builder.build().unwrap();
-
         let res = cme_info.image().extent();
-        // info!("waited");
         let submit_info = cme_info.submit(&dev, &queue, |wait, mut queue, release| unsafe {
             queue
                 .submit(
@@ -214,7 +217,9 @@ async fn stardust_loop(
             queue.wait_idle().unwrap();
         });
         let ratio = res[0] as f32 / res[1] as f32;
-        let mat = Mat4::perspective_rh(90f32.to_radians(), ratio, 0.0, 1000.0).inverse();
+        // bevy uses reverse Z
+        let mat = Mat4::perspective_rh(60f32.to_radians(), ratio, 300.0, 0.003);
+        // let mat = Mat4::perspective_infinite_reverse_rh(64f32, ratio, 0.003);
 
         panel
             .set_material_parameter(
@@ -239,7 +244,7 @@ async fn stardust_loop(
 }
 
 struct Output {
-    window: Arc<Window>,
+    _window: Arc<Window>,
     swapchain: Arc<vulkano::swapchain::Swapchain>,
     swap_images: Vec<Arc<Image>>,
     cme_swapchain: Mutex<Swapchain>,
@@ -268,7 +273,11 @@ impl ApplicationHandler for WinitApp {
             .dev
             .physical_device()
             .surface_formats(&surface, Default::default())
-            .unwrap()[0];
+            .unwrap()
+            .into_iter()
+            .filter(|(f, _)| format!("{:?}", f).contains("SRGB"))
+            .next()
+            .unwrap();
         let (swapchain, images) = {
             let surface_capabilities = self
                 .dev
@@ -281,7 +290,7 @@ impl ApplicationHandler for WinitApp {
                 surface,
                 SwapchainCreateInfo {
                     min_image_count: surface_capabilities.min_image_count.max(2),
-                    image_format,
+                    image_format: dbg!(image_format),
                     image_extent: window_size.into(),
                     image_usage: ImageUsage::TRANSFER_DST,
                     composite_alpha: CompositeAlpha::Opaque,
@@ -304,7 +313,7 @@ impl ApplicationHandler for WinitApp {
         )
         .into();
         self.output.lock().unwrap().replace(Output {
-            window,
+            _window: window,
             swapchain,
             swap_images: images,
             cme_swapchain,
@@ -314,7 +323,7 @@ impl ApplicationHandler for WinitApp {
     fn window_event(
         &mut self,
         event_loop: &winit::event_loop::ActiveEventLoop,
-        window_id: winit::window::WindowId,
+        _window_id: winit::window::WindowId,
         event: winit::event::WindowEvent,
     ) {
         match event {
@@ -335,7 +344,7 @@ impl ApplicationHandler for WinitApp {
         //     .unwrap()
         //     .as_ref()
         //     .unwrap()
-        //     .window
+        //     ._window
         //     .request_redraw();
     }
 }
