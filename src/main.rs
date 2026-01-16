@@ -3,7 +3,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use glam::{Mat4, Quat, vec3};
+use glam::{Mat4, Quat};
 use stardust_xr_cme::{
     dmatex::Dmatex, format::DmatexFormat, render_device::RenderDevice, swapchain::Swapchain,
 };
@@ -20,7 +20,8 @@ use tracing::info;
 use vulkano::{
     VulkanLibrary,
     command_buffer::{
-        self, AutoCommandBufferBuilder, BlitImageInfo, CommandBufferSubmitInfo, SemaphoreSubmitInfo, SubmitInfo, allocator::StandardCommandBufferAllocator,
+        self, AutoCommandBufferBuilder, BlitImageInfo, CommandBufferSubmitInfo,
+        SemaphoreSubmitInfo, SubmitInfo, allocator::StandardCommandBufferAllocator,
     },
     device::{Device, DeviceCreateInfo, DeviceExtensions, Queue, QueueCreateInfo, QueueFlags},
     format::Format,
@@ -30,9 +31,7 @@ use vulkano::{
         CompositeAlpha, PresentInfo, PresentMode, SemaphorePresentInfo, Surface,
         SwapchainCreateInfo, SwapchainPresentInfo,
     },
-    sync::
-        semaphore::Semaphore
-    ,
+    sync::semaphore::Semaphore,
 };
 use winit::{application::ApplicationHandler, event_loop::EventLoop, window::Window};
 
@@ -217,9 +216,8 @@ async fn stardust_loop(
             queue.wait_idle().unwrap();
         });
         let ratio = res[0] as f32 / res[1] as f32;
-        // bevy uses reverse Z
+        // use reverse Z
         let mat = Mat4::perspective_rh(60f32.to_radians(), ratio, 300.0, 0.003);
-        // let mat = Mat4::perspective_infinite_reverse_rh(64f32, ratio, 0.003);
 
         panel
             .set_material_parameter(
@@ -262,7 +260,7 @@ impl ApplicationHandler for WinitApp {
         info!("creating new window");
         let window = Arc::new(
             event_loop
-                .create_window(Window::default_attributes())
+                .create_window(Window::default_attributes().with_transparent(true))
                 .unwrap(),
         );
         let surface = Surface::from_window(self.instance.clone(), window.clone()).unwrap();
@@ -290,10 +288,10 @@ impl ApplicationHandler for WinitApp {
                 surface,
                 SwapchainCreateInfo {
                     min_image_count: surface_capabilities.min_image_count.max(2),
-                    image_format: dbg!(image_format),
+                    image_format: image_format,
                     image_extent: window_size.into(),
                     image_usage: ImageUsage::TRANSFER_DST,
-                    composite_alpha: CompositeAlpha::Opaque,
+                    composite_alpha: CompositeAlpha::PreMultiplied,
                     present_mode: PresentMode::Mailbox,
 
                     ..Default::default()
