@@ -3,7 +3,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use glam::{Mat4, Quat};
+use glam::{Mat4, Quat, UVec2};
 use stardust_xr_cme::{
     dmatex::Dmatex, format::DmatexFormat, render_device::RenderDevice, swapchain::Swapchain,
 };
@@ -46,7 +46,7 @@ async fn main() {
 
     let async_loop = client.async_event_loop();
     let client = async_loop.client_handle.clone();
-    let render_dev = RenderDevice::primary_server_device(&client).await.unwrap();
+    let render_dev = Arc::new(RenderDevice::primary_server_device(&client).await.unwrap());
     let library = VulkanLibrary::new().unwrap();
 
     let event_loop = EventLoop::new().unwrap();
@@ -96,6 +96,7 @@ async fn main() {
         Default::default(),
     ));
     let output = Arc::<Mutex<Option<Output>>>::default();
+    let resize = Arc::<Mutex<Option<UVec2>>>::default();
     tokio::spawn(stardust_loop(
         async_loop.get_event_handle(),
         client.clone(),
@@ -103,15 +104,18 @@ async fn main() {
         queue,
         output.clone(),
         cballoc,
+        resize.clone(),
+        render_dev.clone(),
     ));
     tokio::task::block_in_place(|| {
         let mut winit_app = WinitApp {
             output,
             dev,
             instance,
-            render_dev: render_dev,
+            render_dev,
             formats,
             client,
+            resize,
         };
         event_loop.run_app(&mut winit_app).unwrap();
     });
@@ -123,6 +127,8 @@ async fn stardust_loop(
     queue: Arc<Queue>,
     output: Arc<Mutex<Option<Output>>>,
     cballoc: Arc<StandardCommandBufferAllocator>,
+    resize: Arc<Mutex<Option<UVec2>>>,
+    render_dev: Arc<RenderDevice>,
 ) {
     let camera = Camera::create(
         client.get_root(),
@@ -155,6 +161,27 @@ async fn stardust_loop(
             }
             Some(RootEvent::Frame { info }) => info,
         };
+        let resize = resize.lock().unwrap().take();
+        if let Some(resize) = resize {
+            let formats = DmatexFormat::enumerate(&client, &render_dev).await.unwrap();
+            let dmatex_format = formats.get(&Format::R8G8B8A8_SRGB).unwrap();
+            *output
+                .lock()
+                .unwrap()
+                .as_mut()
+                .unwrap()
+                .cme_swapchain
+                .lock()
+                .unwrap() = Swapchain::new(
+                &client,
+                &dev,
+                &render_dev,
+                DmatexSize::Dim2D(resize.into()),
+                dmatex_format,
+                None,
+                ImageUsage::TRANSFER_SRC | ImageUsage::COLOR_ATTACHMENT,
+            );
+        }
         let output_lock = output.lock().unwrap();
         let Some(output) = output_lock.as_ref() else {
             continue;
@@ -220,6 +247,12 @@ async fn stardust_loop(
         let mat = Mat4::perspective_rh(60f32.to_radians(), ratio, 300.0, 0.003);
 
         panel
+            .set_material_parameter("opaque", MaterialParameter::Bool(false))
+            .unwrap();
+        panel
+            .set_material_parameter("unlit", MaterialParameter::Bool(true))
+            .unwrap();
+        panel
             .set_material_parameter(
                 "diffuse",
                 MaterialParameter::Dmatex(DmatexSubmitInfo {
@@ -251,9 +284,10 @@ struct WinitApp {
     output: Arc<Mutex<Option<Output>>>,
     dev: Arc<Device>,
     instance: Arc<Instance>,
-    render_dev: RenderDevice,
+    render_dev: Arc<RenderDevice>,
     formats: HashMap<Format, DmatexFormat>,
     client: Arc<ClientHandle>,
+    resize: Arc<Mutex<Option<UVec2>>>,
 }
 impl ApplicationHandler for WinitApp {
     fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
@@ -325,7 +359,12 @@ impl ApplicationHandler for WinitApp {
         event: winit::event::WindowEvent,
     ) {
         match event {
-            winit::event::WindowEvent::Resized(_physical_size) => {}
+            winit::event::WindowEvent::Resized(physical_size) => {
+                self.resize.lock().unwrap().replace(UVec2 {
+                    x: physical_size.width,
+                    y: physical_size.height,
+                });
+            }
             winit::event::WindowEvent::CloseRequested => {
                 event_loop.exit();
             }

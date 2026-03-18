@@ -4,8 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-stardust-xr-fusion = { git = "http://github.com/StardustXR/core.git", version = "0.50.0" }
-stardust-xr-cme = { git = "https://github.com/StardustXR/cme.git", version = "0.50.0" }
+stardust-xr-fusion = { git = "http://github.com/StardustXR/core.git", version = "0.51" }
+stardust-xr-cme = { git = "https://github.com/StardustXR/cme.git", version = "0.51" }
 tokio = { version = "1.49.0", features = ["macros", "rt", "rt-multi-thread", "tracing"] }
 vulkano = { git = "https://github.com/Schmarni-Dev/vulkano", branch = "0_35_dmabuf_fixes", default-features = false }
 winit = { version = "0.30.12", default-features = false, features = ["wayland", "mint", "rwh_06"] }
