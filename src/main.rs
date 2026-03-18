@@ -3,19 +3,22 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use glam::{Mat4, Quat, UVec2};
+use glam::{Mat4, UVec2};
 use stardust_xr_cme::{
     dmatex::Dmatex, format::DmatexFormat, render_device::RenderDevice, swapchain::Swapchain,
 };
 use stardust_xr_fusion::{
     AsyncEventHandle, Client, ClientHandle,
     camera::{Camera, CameraAspect, View},
+    connect_client,
     drawable::{DmatexSize, DmatexSubmitInfo, MaterialParameter, Model, ModelPartAspect},
+    fields::Field,
     project_local_resources,
     root::{RootAspect, RootEvent},
-    spatial::Transform,
+    spatial::{SpatialAspect, Transform},
     values::ResourceID,
 };
+use stardust_xr_molecules::{FrameSensitive, Grabbable, GrabbableSettings, UIElement};
 use tracing::info;
 use vulkano::{
     VulkanLibrary,
@@ -130,17 +133,29 @@ async fn stardust_loop(
     resize: Arc<Mutex<Option<UVec2>>>,
     render_dev: Arc<RenderDevice>,
 ) {
-    let camera = Camera::create(
+    let conn = connect_client().await.unwrap();
+    let field = Field::create(
         client.get_root(),
-        Transform::from_translation_rotation(
-            [0.0, 0.2, 0.2],
-            Quat::from_rotation_y(-90f32.to_radians()),
-        ),
+        Transform::identity(),
+        stardust_xr_fusion::fields::Shape::Box([0.2, 0.01, 0.2].into()),
     )
     .unwrap();
+    let mut grabbable = Grabbable::create(
+        conn,
+        "/Cam",
+        client.get_root(),
+        Transform::identity(),
+        &field,
+        GrabbableSettings::default(),
+    )
+    .unwrap();
+    field
+        .set_spatial_parent(&grabbable.content_parent())
+        .unwrap();
+    let camera = Camera::create(&field, Transform::from_translation([0.0, 0.0, -0.005])).unwrap();
     let model = Model::create(
-        &camera,
-        Transform::from_scale([0.2; 3]),
+        &field,
+        Transform::from_scale([0.2, 0.2, 0.01]),
         &ResourceID::new_namespaced("vk", "panel"),
     )
     .unwrap();
@@ -151,7 +166,7 @@ async fn stardust_loop(
 
     loop {
         event.wait().await;
-        let _frame_info = match client.get_root().recv_root_event() {
+        let frame_info = match client.get_root().recv_root_event() {
             Some(RootEvent::Ping { response }) => {
                 response.send_ok(());
                 continue;
@@ -161,18 +176,17 @@ async fn stardust_loop(
             }
             Some(RootEvent::Frame { info }) => info,
         };
+
+        if grabbable.handle_events() {
+            grabbable.frame(&frame_info);
+        }
         let resize = resize.lock().unwrap().take();
         if let Some(resize) = resize {
             let formats = DmatexFormat::enumerate(&client, &render_dev).await.unwrap();
             let dmatex_format = formats.get(&Format::R8G8B8A8_SRGB).unwrap();
-            *output
-                .lock()
-                .unwrap()
-                .as_mut()
-                .unwrap()
-                .cme_swapchain
-                .lock()
-                .unwrap() = Swapchain::new(
+            let mut output_lock = output.lock().unwrap();
+            let output = output_lock.as_mut().unwrap();
+            *output.cme_swapchain.lock().unwrap() = Swapchain::new(
                 &client,
                 &dev,
                 &render_dev,
@@ -181,6 +195,21 @@ async fn stardust_loop(
                 None,
                 ImageUsage::TRANSFER_SRC | ImageUsage::COLOR_ATTACHMENT,
             );
+            let (swap, images) = output
+                .swapchain
+                .recreate(SwapchainCreateInfo {
+                    min_image_count: output.swapchain.image_count(),
+                    image_format: output.swapchain.image_format(),
+                    image_extent: resize.into(),
+                    image_usage: ImageUsage::TRANSFER_DST,
+                    composite_alpha: CompositeAlpha::PreMultiplied,
+                    present_mode: PresentMode::Mailbox,
+
+                    ..Default::default()
+                })
+                .unwrap();
+            output.swapchain = swap;
+            output.swap_images = images;
         }
         let output_lock = output.lock().unwrap();
         let Some(output) = output_lock.as_ref() else {
@@ -247,7 +276,7 @@ async fn stardust_loop(
         let mat = Mat4::perspective_rh(60f32.to_radians(), ratio, 300.0, 0.003);
 
         panel
-            .set_material_parameter("opaque", MaterialParameter::Bool(false))
+            .set_material_parameter("opaque", MaterialParameter::Bool(true))
             .unwrap();
         panel
             .set_material_parameter("unlit", MaterialParameter::Bool(true))
