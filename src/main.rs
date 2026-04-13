@@ -146,7 +146,14 @@ async fn stardust_loop(
         client.get_root(),
         Transform::identity(),
         &field,
-        GrabbableSettings::default(),
+        GrabbableSettings {
+            max_distance: 0.01,
+            linear_momentum: None,
+            angular_momentum: None,
+            magnet: false,
+            pointer_mode: stardust_xr_molecules::PointerMode::Align,
+            reparentable: true,
+        },
     )
     .unwrap();
     field
