@@ -137,7 +137,7 @@ async fn stardust_loop(
     let field = Field::create(
         client.get_root(),
         Transform::identity(),
-        stardust_xr_fusion::fields::Shape::Box([0.2, 0.01, 0.2].into()),
+        stardust_xr_fusion::fields::Shape::Box([0.2, 0.2, 0.01].into()),
     )
     .unwrap();
     let mut grabbable = Grabbable::create(
@@ -202,7 +202,7 @@ async fn stardust_loop(
                     image_format: output.swapchain.image_format(),
                     image_extent: resize.into(),
                     image_usage: ImageUsage::TRANSFER_DST,
-                    composite_alpha: CompositeAlpha::PreMultiplied,
+                    composite_alpha: CompositeAlpha::Opaque,
                     present_mode: PresentMode::Mailbox,
 
                     ..Default::default()
@@ -354,7 +354,7 @@ impl ApplicationHandler for WinitApp {
                     image_format: image_format,
                     image_extent: window_size.into(),
                     image_usage: ImageUsage::TRANSFER_DST,
-                    composite_alpha: CompositeAlpha::PreMultiplied,
+                    composite_alpha: CompositeAlpha::Opaque,
                     present_mode: PresentMode::Mailbox,
 
                     ..Default::default()
